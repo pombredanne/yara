@@ -282,7 +282,6 @@ int _yr_parser_write_string(
     int* min_atom_quality)
 {
   SIZED_STRING* literal_string;
-  YR_AC_MATCH* new_match;
   YR_ATOM_LIST_ITEM* atom_list = NULL;
 
   int result;
@@ -381,37 +380,11 @@ int _yr_parser_write_string(
   if (result == ERROR_SUCCESS)
   {
     // Add the string to Aho-Corasick automaton.
-
-    if (atom_list != NULL)
-    {
-      result = yr_ac_add_string(
-          compiler->automaton_arena,
-          compiler->automaton,
-          *string,
-          atom_list);
-    }
-    else
-    {
-      result = yr_arena_allocate_struct(
-          compiler->automaton_arena,
-          sizeof(YR_AC_MATCH),
-          (void**) &new_match,
-          offsetof(YR_AC_MATCH, string),
-          offsetof(YR_AC_MATCH, forward_code),
-          offsetof(YR_AC_MATCH, backward_code),
-          offsetof(YR_AC_MATCH, next),
-          EOL);
-
-      if (result == ERROR_SUCCESS)
-      {
-        new_match->backtrack = 0;
-        new_match->string = *string;
-        new_match->forward_code = re->root_node->forward_code;
-        new_match->backward_code = NULL;
-        new_match->next = compiler->automaton->root->matches;
-        compiler->automaton->root->matches = new_match;
-      }
-    }
+    result = yr_ac_add_string(
+        compiler->automaton,
+        *string,
+        atom_list,
+        compiler->matches_arena);
   }
 
   *min_atom_quality = yr_atoms_min_quality(atom_list);
@@ -464,6 +437,23 @@ YR_STRING* yr_parser_reduce_string_declaration(
   RE* remainder_re;
 
   RE_ERROR re_error;
+
+  // Determine if a string with the same identifier was already defined
+  // by searching for the identifier in string_table.
+
+  string = (YR_STRING*) yr_hash_table_lookup(
+      compiler->strings_table,
+      identifier,
+      NULL);
+
+  if (string != NULL)
+  {
+    compiler->last_result = ERROR_DUPLICATED_STRING_IDENTIFIER;
+    yr_compiler_set_error_extra_info(compiler, identifier);
+    goto _exit;
+  }
+
+  // Empty strings are now allowed
 
   if (str->length == 0)
   {
@@ -556,13 +546,10 @@ YR_STRING* yr_parser_reduce_string_declaration(
 
     if (yr_re_contains_dot_star(re))
     {
-      snprintf(
-        message,
-        sizeof(message),
-        "%s contains .*, consider using .{N} with a reasonable value for N",
-        identifier);
-
-        yywarning(yyscanner, message);
+      yywarning(
+          yyscanner,
+          "%s contains .*, consider using .{N} with a reasonable value for N",
+          identifier);
     }
 
     compiler->last_result = yr_re_split_at_chaining_point(
@@ -653,16 +640,25 @@ YR_STRING* yr_parser_reduce_string_declaration(
       goto _exit;
   }
 
+  if (!STRING_IS_ANONYMOUS(string))
+  {
+    compiler->last_result = yr_hash_table_add(
+      compiler->strings_table,
+      identifier,
+      NULL,
+      string);
+
+    if (compiler->last_result != ERROR_SUCCESS)
+      goto _exit;
+  }
+
   if (min_atom_quality < 3 && compiler->callback != NULL)
   {
-    snprintf(
-        message,
-        sizeof(message),
+    yywarning(
+        yyscanner,
         "%s is slowing down scanning%s",
         string->identifier,
         min_atom_quality < 2 ? " (critical!)" : "");
-
-    yywarning(yyscanner, message);
   }
 
 _exit:
@@ -680,10 +676,7 @@ _exit:
 YR_RULE* yr_parser_reduce_rule_declaration_phase_1(
     yyscan_t yyscanner,
     int32_t flags,
-    const char* identifier,
-    char* tags,
-    YR_STRING* strings,
-    YR_META* metas)
+    const char* identifier)
 {
   YR_COMPILER* compiler = yyget_extra(yyscanner);
   YR_RULE* rule = NULL;
@@ -720,9 +713,6 @@ YR_RULE* yr_parser_reduce_rule_declaration_phase_1(
     return NULL;
 
   rule->g_flags = flags;
-  rule->tags = tags;
-  rule->strings = strings;
-  rule->metas = metas;
   rule->ns = compiler->current_namespace;
 
   #ifdef PROFILING_ENABLED
@@ -751,8 +741,10 @@ YR_RULE* yr_parser_reduce_rule_declaration_phase_1(
         compiler->current_namespace->name,
         (void*) rule);
 
-  compiler->current_rule = rule;
+  // Clean strings_table as we are starting to parse a new rule.
+  yr_hash_table_clean(compiler->strings_table, NULL);
 
+  compiler->current_rule = rule;
   return rule;
 }
 
@@ -795,7 +787,6 @@ int yr_parser_reduce_rule_declaration_phase_2(
 
   return compiler->last_result;
 }
-
 
 
 int yr_parser_reduce_string_identifier(

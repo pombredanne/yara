@@ -38,27 +38,6 @@ limitations under the License.
 
 #include "exception.h"
 
-void _yr_rules_lock(
-    YR_RULES* rules)
-{
-  #ifdef _WIN32
-  WaitForSingleObject(rules->mutex, INFINITE);
-  #else
-  pthread_mutex_lock(&rules->mutex);
-  #endif
-}
-
-
-void _yr_rules_unlock(
-    YR_RULES* rules)
-{
-  #ifdef _WIN32
-  ReleaseMutex(rules->mutex);
-  #else
-  pthread_mutex_unlock(&rules->mutex);
-  #endif
-}
-
 
 YR_API int yr_rules_define_integer_variable(
     YR_RULES* rules,
@@ -74,13 +53,13 @@ YR_API int yr_rules_define_integer_variable(
     if (strcmp(external->identifier, identifier) == 0)
     {
       external->value.i = value;
-      break;
+      return ERROR_SUCCESS;
     }
 
     external++;
   }
 
-  return ERROR_SUCCESS;
+  return ERROR_INVALID_ARGUMENT;
 }
 
 
@@ -98,13 +77,13 @@ YR_API int yr_rules_define_boolean_variable(
     if (strcmp(external->identifier, identifier) == 0)
     {
       external->value.i = value;
-      break;
+      return ERROR_SUCCESS;
     }
 
     external++;
   }
 
-  return ERROR_SUCCESS;
+  return ERROR_INVALID_ARGUMENT;
 }
 
 
@@ -122,13 +101,13 @@ YR_API int yr_rules_define_float_variable(
     if (strcmp(external->identifier, identifier) == 0)
     {
       external->value.f = value;
-      break;
+      return ERROR_SUCCESS;
     }
 
     external++;
   }
 
-  return ERROR_SUCCESS;
+  return ERROR_INVALID_ARGUMENT;
 }
 
 
@@ -163,7 +142,7 @@ YR_API int yr_rules_define_string_variable(
     external++;
   }
 
-  return ERROR_SUCCESS;
+  return ERROR_INVALID_ARGUMENT;
 }
 
 
@@ -241,72 +220,88 @@ int _yr_rules_scan_mem_block(
     int timeout,
     time_t start_time)
 {
-  YR_AC_MATCH* ac_match;
-  YR_AC_STATE* next_state;
-  YR_AC_STATE* current_state = rules->automaton->root;
+  YR_AC_TRANSITION_TABLE transition_table = rules->transition_table;
+  YR_AC_MATCH_TABLE match_table = rules->match_table;
+
+  YR_AC_MATCH* match;
+  YR_AC_TRANSITION transition;
 
   size_t i = 0;
+  uint32_t state = YR_AC_ROOT_STATE;
+  uint16_t index;
 
   while (i < block->size)
   {
-    ac_match = current_state->matches;
+    match = match_table[state].match;
 
-    while (ac_match != NULL)
+    while (match != NULL)
     {
-      if (ac_match->backtrack <= i)
+      if (timeout > 0 && i % 4096 == 0)
+      {
+        if (difftime(time(NULL), start_time) > timeout)
+          return ERROR_SCAN_TIMEOUT;
+      }
+
+      if (match->backtrack <= i)
       {
         FAIL_ON_ERROR(yr_scan_verify_match(
             context,
-            ac_match,
+            match,
             block->data,
             block->size,
             block->base,
-            i - ac_match->backtrack));
+            i - match->backtrack));
       }
 
-      ac_match = ac_match->next;
+      match = match->next;
     }
 
-    next_state = yr_ac_next_state(current_state, block->data[i]);
+    index = block->data[i++] + 1;
+    transition = transition_table[state + index];
 
-    while (next_state == NULL && current_state->depth > 0)
+    while (YR_AC_INVALID_TRANSITION(transition, index))
     {
-      current_state = current_state->failure;
-      next_state = yr_ac_next_state(current_state, block->data[i]);
+      if (state != YR_AC_ROOT_STATE)
+      {
+        state = transition_table[state] >> 32;
+        transition = transition_table[state + index];
+      }
+      else
+      {
+        transition = 0;
+        break;
+      }
     }
 
-    if (next_state != NULL)
-      current_state = next_state;
+    state = transition >> 32;
 
-    i++;
-
-    if (timeout > 0 && i % 256 == 0)
-    {
-      if (difftime(time(NULL), start_time) > timeout)
-        return ERROR_SCAN_TIMEOUT;
-    }
   }
 
-  ac_match = current_state->matches;
 
-  while (ac_match != NULL)
+  match = match_table[state].match;
+
+  while (match != NULL)
   {
-    if (ac_match->backtrack <= block->size)
+    if (match->backtrack <= i)
     {
       FAIL_ON_ERROR(yr_scan_verify_match(
           context,
-          ac_match,
+          match,
           block->data,
           block->size,
           block->base,
-          block->size - ac_match->backtrack));
+          i - match->backtrack));
     }
 
-    ac_match = ac_match->next;
+    match = match->next;
   }
+
+
 
   return ERROR_SUCCESS;
 }
+
+
 
 
 YR_API int yr_rules_scan_mem_blocks(
@@ -320,7 +315,7 @@ YR_API int yr_rules_scan_mem_blocks(
   YR_EXTERNAL_VARIABLE* external;
   YR_RULE* rule;
   YR_SCAN_CONTEXT context;
-  
+
   time_t start_time;
   tidx_mask_t bit = 1;
 
@@ -330,7 +325,7 @@ YR_API int yr_rules_scan_mem_blocks(
   if (block == NULL)
     return ERROR_SUCCESS;
 
-  _yr_rules_lock(rules);
+  yr_mutex_lock(&rules->mutex);
 
   while (rules->tidx_mask & bit)
   {
@@ -343,7 +338,7 @@ YR_API int yr_rules_scan_mem_blocks(
   else
     result = ERROR_TOO_MANY_SCAN_THREADS;
 
-  _yr_rules_unlock(rules);
+  yr_mutex_unlock(&rules->mutex);
 
   if (result != ERROR_SUCCESS)
     return result;
@@ -450,14 +445,6 @@ YR_API int yr_rules_scan_mem_blocks(
 
   yr_rules_foreach(rules, rule)
   {
-    if (RULE_IS_GLOBAL(rule) && !(rule->t_flags[tidx] & RULE_TFLAGS_MATCH))
-    {
-      rule->ns->t_flags[tidx] |= NAMESPACE_TFLAGS_UNSATISFIED_GLOBAL;
-    }
-  }
-
-  yr_rules_foreach(rules, rule)
-  {
     int message;
 
     if (rule->t_flags[tidx] & RULE_TFLAGS_MATCH &&
@@ -491,9 +478,6 @@ _exit:
 
   _yr_rules_clean_matches(rules, &context);
 
-  if (flags & SCAN_FLAGS_SHOW_MODULE_DATA)
-    yr_modules_print_data(&context);
-
   yr_modules_unload_all(&context);
 
   if (context.matches_arena != NULL)
@@ -507,9 +491,9 @@ _exit:
         context.objects_table,
         (YR_HASH_TABLE_FREE_VALUE_FUNC) yr_object_destroy);
 
-  _yr_rules_lock(rules);
+  yr_mutex_lock(&rules->mutex);
   rules->tidx_mask &= ~(1 << tidx);
-  _yr_rules_unlock(rules);
+  yr_mutex_unlock(&rules->mutex);
 
   yr_set_tidx(-1);
 
@@ -581,7 +565,7 @@ YR_API int yr_rules_scan_fd(
     int timeout)
 {
   YR_MAPPED_FILE mfile;
-  
+
   int result = yr_filemap_map_fd(fd, 0, 0, &mfile);
 
   if (result == ERROR_SUCCESS)
@@ -595,7 +579,7 @@ YR_API int yr_rules_scan_fd(
         user_data,
         timeout);
 
-    yr_filemap_unmap(&mfile);
+    yr_filemap_unmap_fd(&mfile);
   }
 
   return result;
@@ -663,23 +647,14 @@ YR_API int yr_rules_load_stream(
   header = (YARA_RULES_FILE_HEADER*)
       yr_arena_base_address(new_rules->arena);
 
-  new_rules->automaton = header->automaton;
   new_rules->code_start = header->code_start;
   new_rules->externals_list_head = header->externals_list_head;
   new_rules->rules_list_head = header->rules_list_head;
+  new_rules->match_table = header->match_table;
+  new_rules->transition_table = header->transition_table;
   new_rules->tidx_mask = 0;
 
-  #if _WIN32
-  new_rules->mutex = CreateMutex(NULL, FALSE, NULL);
-
-  if (new_rules->mutex == NULL)
-    return ERROR_INTERNAL_FATAL_ERROR;
-  #else
-  result = pthread_mutex_init(&new_rules->mutex, NULL);
-
-  if (result != 0)
-    return ERROR_INTERNAL_FATAL_ERROR;
-  #endif
+  FAIL_ON_ERROR(yr_mutex_create(&new_rules->mutex));
 
   *rules = new_rules;
 
@@ -695,7 +670,7 @@ YR_API int yr_rules_load(
 
   YR_STREAM stream;
   FILE* fh = fopen(filename, "rb");
- 
+
   if (fh == NULL)
     return ERROR_COULD_NOT_OPEN_FILE;
 
@@ -723,7 +698,7 @@ YR_API int yr_rules_save(
     const char* filename)
 {
   int result;
-  
+
   YR_STREAM stream;
   FILE* fh = fopen(filename, "wb");
 
@@ -753,12 +728,7 @@ YR_API int yr_rules_destroy(
     external++;
   }
 
-  #if _WIN32
-  CloseHandle(rules->mutex);
-  #else
-  pthread_mutex_destroy(&rules->mutex);
-  #endif
-
+  yr_mutex_destroy(&rules->mutex);
   yr_arena_destroy(rules->arena);
   yr_free(rules);
 

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__CYGWIN__)
 
 #include <sys/stat.h>
 #include <dirent.h>
@@ -110,6 +110,7 @@ int negate = FALSE;
 int count = 0;
 int limit = 0;
 int timeout = 1000000;
+int stack_size = DEFAULT_STACK_SIZE;
 int threads = 8;
 
 
@@ -157,6 +158,9 @@ args_option_t options[] =
 
   OPT_INTEGER('a', "timeout", &timeout,
       "abort scanning after the given number of SECONDS", "SECONDS"),
+
+  OPT_INTEGER('k', "stack-size", &stack_size,
+      "set maximum stack size (default=16384)", "SLOTS"),
 
   OPT_BOOLEAN('r', "recursive", &recursive_search,
       "recursively search directories"),
@@ -273,7 +277,7 @@ char* file_queue_get()
 }
 
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 int is_directory(
     const char* path)
@@ -314,7 +318,9 @@ void scan_dir(
       {
         file_queue_put(full_path);
       }
-      else if (recursive && FindFileData.cFileName[0] != '.' )
+      else if (recursive &&
+               strcmp(FindFileData.cFileName, ".") != 0 &&
+               strcmp(FindFileData.cFileName, "..") != 0)
       {
         scan_dir(full_path, recursive, start_time, rules, callback);
       }
@@ -337,6 +343,7 @@ int is_directory(
 
   return 0;
 }
+
 
 void scan_dir(
     const char* dir,
@@ -369,7 +376,8 @@ void scan_dir(
         else if(recursive &&
                 S_ISDIR(st.st_mode) &&
                 !S_ISLNK(st.st_mode) &&
-                de->d_name[0] != '.')
+                strcmp(de->d_name, ".") != 0 &&
+                strcmp(de->d_name, "..") != 0)
         {
           scan_dir(full_path, recursive, start_time, rules, callback);
         }
@@ -402,7 +410,7 @@ void print_string(
 }
 
 
-static char cescapes[] = 
+static char cescapes[] =
 {
   0  , 0  , 0  , 0  , 0  , 0  , 0  , 'a',
   'b', 't', 'n', 'v', 'f', 'r', 0  , 0  ,
@@ -413,9 +421,9 @@ static char cescapes[] =
 
 void print_escaped(
     uint8_t* data,
-    int length)
+    size_t length)
 {
-  int i;
+  size_t i;
 
   for (i = 0; i < length; i++)
   {
@@ -426,15 +434,15 @@ void print_escaped(
       case '\\':
         printf("\\%c", data[i]);
         break;
-  
+
       default:
-        if (data[i] >= 127) 
+        if (data[i] >= 127)
           printf("\\%03o", data[i]);
         else if (data[i] >= 32)
           putchar(data[i]);
-        else if (cescapes[data[i]] != 0) 
+        else if (cescapes[data[i]] != 0)
           printf("\\%c", cescapes[data[i]]);
-        else 
+        else
           printf("\\%03o", data[i]);
     }
   }
@@ -455,7 +463,8 @@ void print_hex_string(
 }
 
 
-void print_scanner_error(int error)
+void print_scanner_error(
+    int error)
 {
   switch (error)
   {
@@ -478,6 +487,10 @@ void print_scanner_error(int error)
       break;
     case ERROR_CORRUPT_FILE:
       fprintf(stderr, "corrupt compiled rules file.\n");
+      break;
+    case ERROR_EXEC_STACK_OVERFLOW:
+      fprintf(stderr, "stack overflow while evaluating condition "
+                      "(see --stack-size argument).\n");
       break;
     default:
       fprintf(stderr, "internal error: %d\n", error);
@@ -505,7 +518,10 @@ void print_compiler_error(
 }
 
 
-int handle_message(int message, YR_RULE* rule, void* data)
+int handle_message(
+    int message,
+    YR_RULE* rule,
+    void* data)
 {
   const char* tag;
   int show = TRUE;
@@ -597,7 +613,7 @@ int handle_message(int message, YR_RULE* rule, void* data)
         {
           printf("%s=%s", meta->identifier, meta->integer ? "true" : "false");
         }
-        else 
+        else
         {
           printf("%s=\"", meta->identifier);
           print_escaped((uint8_t*) (meta->string), strlen(meta->string));
@@ -647,9 +663,13 @@ int handle_message(int message, YR_RULE* rule, void* data)
 }
 
 
-int callback(int message, void* message_data, void* user_data)
+int callback(
+    int message,
+    void* message_data,
+    void* user_data)
 {
   YR_MODULE_IMPORT* mi;
+  YR_OBJECT* object;
   MODULE_DATA* module_data;
 
   switch(message)
@@ -659,8 +679,8 @@ int callback(int message, void* message_data, void* user_data)
       return handle_message(message, (YR_RULE*) message_data, user_data);
 
     case CALLBACK_MSG_IMPORT_MODULE:
-      mi = (YR_MODULE_IMPORT*) message_data;
 
+      mi = (YR_MODULE_IMPORT*) message_data;
       module_data = modules_data_list;
 
       while (module_data != NULL)
@@ -676,12 +696,29 @@ int callback(int message, void* message_data, void* user_data)
       }
 
       return CALLBACK_CONTINUE;
+
+    case CALLBACK_MSG_MODULE_IMPORTED:
+
+      if (show_module_data)
+      {
+        object = (YR_OBJECT*) message_data;
+
+        mutex_lock(&output_mutex);
+
+        yr_object_print_data(object, 0, 1);
+        printf("\n");
+
+        mutex_unlock(&output_mutex);
+      }
+
+      return CALLBACK_CONTINUE;
   }
 
   return CALLBACK_ERROR;
 }
 
-#ifdef _WIN32
+
+#if defined(_WIN32) || defined(__CYGWIN__)
 DWORD WINAPI scanning_thread(LPVOID param)
 #else
 void* scanning_thread(void* param)
@@ -695,9 +732,6 @@ void* scanning_thread(void* param)
 
   if (fast_scan)
     flags |= SCAN_FLAGS_FAST_MODE;
-
-  if (show_module_data)
-    flags |= SCAN_FLAGS_SHOW_MODULE_DATA;
 
   while (file_path != NULL)
   {
@@ -943,7 +977,7 @@ int main(
   if (show_version)
   {
     printf("%s\n", PACKAGE_STRING);
-    return EXIT_FAILURE;
+    return EXIT_SUCCESS;
   }
 
   if (show_help)
@@ -957,7 +991,7 @@ int main(
     args_print_usage(options, 35);
     printf("\nSend bug reports and suggestions to: %s.\n", PACKAGE_BUGREPORT);
 
-    return EXIT_FAILURE;
+    return EXIT_SUCCESS;
   }
 
   if (argc != 2)
@@ -982,6 +1016,14 @@ int main(
   {
     fprintf(stderr, "error: initialization error (%d)\n", result);
     exit_with_code(EXIT_FAILURE);
+  }
+
+  if (stack_size != DEFAULT_STACK_SIZE)
+  {
+    // If the user chose a different stack size than default,
+    // modify the yara config here.
+
+    yr_set_configuration(YR_CONFIG_STACK_SIZE, &stack_size);
   }
 
   // Try to load the rules file as a binary file containing
@@ -1053,9 +1095,6 @@ int main(
     if (fast_scan)
       flags |= SCAN_FLAGS_FAST_MODE;
 
-    if (show_module_data)
-      flags |= SCAN_FLAGS_SHOW_MODULE_DATA;
-
     result = yr_rules_scan_proc(
         rules,
         pid,
@@ -1116,9 +1155,6 @@ int main(
 
     if (fast_scan)
       flags |= SCAN_FLAGS_FAST_MODE;
-
-    if (show_module_data)
-      flags |= SCAN_FLAGS_SHOW_MODULE_DATA;
 
     result = yr_rules_scan_file(
         rules,

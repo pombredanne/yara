@@ -1,4 +1,5 @@
 [![Join the chat at https://gitter.im/plusvic/yara](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/plusvic/yara?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Build Status](https://travis-ci.org/plusvic/yara.svg)](https://travis-ci.org/plusvic/yara)
 
 
 ## YARA in a nutshell
@@ -43,6 +44,7 @@ helpful extension to YARA developed and open-sourced by Bayshore Networks.
 
 ## Who's using YARA
 
+* [ActiveCanopy](https://activecanopy.com/)
 * [Adlice](http://www.adlice.com/)
 * [BAE Systems](http://www.baesystems.com/home?r=ai)
 * [Bayshore Networks, Inc.](http://www.bayshorenetworks.com)
@@ -56,10 +58,12 @@ helpful extension to YARA developed and open-sourced by Bayshore Networks.
 * [Guidance Software](http://www.guidancesoftware.com/endpointsecurity)
 * [Heroku](https://heroku.com)
 * [jsunpack-n](http://jsunpack.jeek.org/)
+* [Kaspersky Lab](http://www.kaspersky.com)
 * [Koodous](https://koodous.com/)
 * [Laika BOSS](https://github.com/lmco/laikaboss)
 * [Lastline, Inc.](http://www.lastline.com)
 * [Metaflows](http://www.metaflows.com)
+* [NBS System](https://www.nbs-system.com/)
 * [osquery](http://www.osquery.io)
 * [PhishMe](http://phishme.com/)
 * [Picus Security](http://www.picussecurity.com/)

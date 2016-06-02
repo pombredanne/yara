@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <assert.h>
 
-#if _WIN32
+#if _WIN32 || __CYGWIN__
 
 #include <windows.h>
 #include <setjmp.h>
@@ -89,7 +89,9 @@ typedef struct sigaction sa;
     sigset_t oldmask;                                           \
     act.sa_handler = exception_handler;                         \
     act.sa_flags = 0; /* SA_ONSTACK? */                         \
+    sigemptyset(&oldmask);                                      \
     sigemptyset(&act.sa_mask);                                  \
+    sigemptyset(&oldmask);                                      \
     pthread_sigmask(SIG_SETMASK, &act.sa_mask, &oldmask);       \
     sigaction(SIGBUS, &act, &oldact);                           \
     int tidx = yr_get_tidx();                                   \

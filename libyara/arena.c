@@ -760,7 +760,9 @@ int yr_arena_write_string(
 // yr_arena_append
 //
 // Appends source_arena to target_arena. This operation destroys source_arena,
-// after returning any pointer to source_arena is no longer valid.
+// after returning any pointer to source_arena is no longer valid. The data
+// from source_arena is guaranteed to be aligned to a 16 bytes boundary when
+// written to the source_arena
 //
 // Args:
 //    YR_ARENA* target_arena    - Pointer to target the arena.
@@ -774,6 +776,20 @@ int yr_arena_append(
     YR_ARENA* target_arena,
     YR_ARENA* source_arena)
 {
+  uint8_t padding_data[15];
+  size_t padding_size = 16 - target_arena->current_page->used % 16;
+
+  if (padding_size < 16)
+  {
+    memset(&padding_data, 0xCC, padding_size);
+
+    FAIL_ON_ERROR(yr_arena_write_data(
+        target_arena,
+        padding_data,
+        padding_size,
+        NULL));
+  }
+
   target_arena->current_page->next = source_arena->page_list_head;
   source_arena->page_list_head->prev = target_arena->current_page;
   target_arena->current_page = source_arena->current_page;
@@ -1027,7 +1043,7 @@ int yr_arena_save_stream(
     reloc = reloc->next;
   }
 
-  assert(page->size < 0x100000000);  // 4GB
+  assert(page->size < 0x80000000);  // 2GB
 
   header.magic[0] = 'Y';
   header.magic[1] = 'A';
@@ -1061,4 +1077,3 @@ int yr_arena_save_stream(
 
   return ERROR_SUCCESS;
 }
-
