@@ -171,7 +171,9 @@ include[ \t]+\"         {
   char            buffer[1024];
   char            *current_file_name;
   char            *s = NULL;
+  #ifdef _WIN32
   char            *b = NULL;
+  #endif
   char            *f;
   FILE*           fh;
 
@@ -198,9 +200,17 @@ include[ \t]+\"         {
     b = strrchr(buffer, '\\'); // in Windows both path delimiters are accepted
     #endif
 
+    #ifdef _WIN32
     if (s != NULL || b != NULL)
+    #else
+    if (s != NULL)
+    #endif
     {
+      #ifdef _WIN32
       f = (b > s)? (b + 1): (s + 1);
+      #else
+      f = s + 1;
+      #endif
 
       strlcpy(f, yyextra->lex_buf, sizeof(buffer) - (f - buffer));
 
@@ -631,12 +641,12 @@ void yywarning(
 
   char* file_name;
   char message[512];
-  
-  va_list message_args;
-  va_start(message_args, message_fmt);
 
   if (compiler->callback == NULL)
     return;
+
+  va_list message_args;
+  va_start(message_args, message_fmt);
 
   if (compiler->file_name_stack_ptr > 0)
     file_name = compiler->file_name_stack[compiler->file_name_stack_ptr - 1];
@@ -651,6 +661,8 @@ void yywarning(
       yyget_lineno(yyscanner),
       message,
       compiler->user_data);
+
+  va_end(message_args);
 }
 
 

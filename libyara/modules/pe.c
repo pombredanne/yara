@@ -941,7 +941,10 @@ IMPORTED_FUNCTION* pe_parse_import_descriptor(
             yr_calloc(1, sizeof(IMPORTED_FUNCTION));
 
         if (imported_func == NULL)
+        {
+          yr_free(name);
           continue;
+        }
 
         imported_func->name = name;
         imported_func->ordinal = ordinal;
@@ -1005,7 +1008,10 @@ IMPORTED_FUNCTION* pe_parse_import_descriptor(
             yr_calloc(1, sizeof(IMPORTED_FUNCTION));
 
         if (imported_func == NULL)
+        {
+          yr_free(name);
           continue;
+        }
 
         imported_func->name = name;
         imported_func->ordinal = ordinal;
@@ -1094,22 +1100,21 @@ IMPORTED_DLL* pe_parse_imports(
 
     if (offset >= 0)
     {
-      IMPORTED_FUNCTION* functions;
+      IMPORTED_DLL* imported_dll;
 
       char* dll_name = (char *) (pe->data + offset);
 
       if (!pe_valid_dll_name(dll_name, pe->data_size - (size_t) offset))
         break;
 
-      functions = pe_parse_import_descriptor(
-          pe, imports, dll_name);
+      imported_dll = (IMPORTED_DLL*) yr_calloc(1, sizeof(IMPORTED_DLL));
 
-      if (functions != NULL)
+      if (imported_dll != NULL)
       {
-        IMPORTED_DLL* imported_dll = (IMPORTED_DLL*) yr_calloc(
-            1, sizeof(IMPORTED_DLL));
+        IMPORTED_FUNCTION* functions = pe_parse_import_descriptor(
+            pe, imports, dll_name);
 
-        if (imported_dll != NULL)
+        if (functions != NULL)
         {
           imported_dll->name = yr_strdup(dll_name);;
           imported_dll->functions = functions;
@@ -1122,6 +1127,10 @@ IMPORTED_DLL* pe_parse_imports(
             tail->next = imported_dll;
 
           tail = imported_dll;
+        }
+        else
+        {
+          yr_free(imported_dll);
         }
       }
     }
@@ -1700,10 +1709,7 @@ define_function(imphash)
       final_name = (char*) yr_malloc(final_name_len + 1);
 
       if (final_name == NULL)
-      {
-        yr_free(dll_name);
         break;
-      }
 
       sprintf(final_name, first ? "%s.%s": ",%s.%s", dll_name, func->name);
 
@@ -2244,6 +2250,7 @@ int module_load(
     size_t module_data_size)
 {
   YR_MEMORY_BLOCK* block;
+  YR_BLOCK_ITERATOR* iterator = context->iterator;
 
   set_integer(
       IMAGE_FILE_MACHINE_UNKNOWN, module_object,
@@ -2484,9 +2491,14 @@ int module_load(
       RESOURCE_TYPE_MANIFEST, module_object,
       "RESOURCE_TYPE_MANIFEST");
 
-  foreach_memory_block(context, block)
+  foreach_memory_block(iterator, block)
   {
-    PIMAGE_NT_HEADERS32 pe_header = pe_get_header(block->data, block->size);
+    uint8_t* block_data = iterator->fetch_data(iterator);
+
+    if (block_data == NULL)
+      continue;
+
+    PIMAGE_NT_HEADERS32 pe_header = pe_get_header(block_data, block->size);
 
     if (pe_header != NULL)
     {
@@ -2500,7 +2512,7 @@ int module_load(
         if (pe == NULL)
           return ERROR_INSUFICIENT_MEMORY;
 
-        pe->data = block->data;
+        pe->data = block_data;
         pe->data_size = block->size;
         pe->header = pe_header;
         pe->object = module_object;

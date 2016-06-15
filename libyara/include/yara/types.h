@@ -182,29 +182,15 @@ typedef struct _YR_META
 } YR_META;
 
 
-typedef struct _YR_MATCH
-{
-  int64_t base;
-  int64_t offset;
-  int32_t length;
-
-  union {
-    uint8_t* data;           // Confirmed matches use "data",
-    int32_t chain_length;    // unconfirmed ones use "chain_length"
-  } YR_ALIGN(8);
-
-  YR_ALIGN(8) struct _YR_MATCH* prev;
-  YR_ALIGN(8) struct _YR_MATCH* next;
-
-} YR_MATCH;
+struct _YR_MATCH;
 
 
 typedef struct _YR_MATCHES
 {
   int32_t count;
 
-  DECLARE_REFERENCE(YR_MATCH*, head);
-  DECLARE_REFERENCE(YR_MATCH*, tail);
+  DECLARE_REFERENCE(struct _YR_MATCH*, head);
+  DECLARE_REFERENCE(struct _YR_MATCH*, tail);
 
 } YR_MATCHES;
 
@@ -309,6 +295,29 @@ typedef struct _YARA_RULES_FILE_HEADER
 // Structs defined below are never stored in the compiled rules file
 //
 
+typedef struct _YR_MATCH
+{
+  int64_t base;              // Base address for the match
+  int64_t offset;            // Offset relative to base for the match
+  int32_t match_length;      // Match length
+  int32_t data_length;
+
+  // Pointer to a buffer containing a portion of the matched data. The size of
+  // the buffer is data_length. data_length is always <= length and is limited
+  // to MAX_MATCH_DATA bytes.
+
+  uint8_t* data;
+
+  // If the match belongs to a chained string chain_length contains the
+  // length of the chain. This field is used only in unconfirmed matches.
+
+  int32_t chain_length;
+
+  struct _YR_MATCH* prev;
+  struct _YR_MATCH* next;
+
+} YR_MATCH;
+
 
 struct _YR_AC_STATE;
 
@@ -360,15 +369,55 @@ typedef struct _YR_RULES {
 } YR_RULES;
 
 
+// memory block iteration types
 typedef struct _YR_MEMORY_BLOCK
 {
-  uint8_t* data;
   size_t size;
   size_t base;
 
   struct _YR_MEMORY_BLOCK* next;
 
 } YR_MEMORY_BLOCK;
+
+
+typedef struct _YR_BLOCK_ITERATOR YR_BLOCK_ITERATOR;
+
+
+typedef YR_MEMORY_BLOCK* (*YR_BLOCK_ITERATOR_MOVE)(
+    YR_BLOCK_ITERATOR* self);
+
+
+typedef uint8_t* (*YR_BLOCK_ITERATOR_FETCH)(
+    YR_BLOCK_ITERATOR* self);
+
+
+struct _YR_BLOCK_ITERATOR
+{
+  void* context;
+
+  YR_BLOCK_ITERATOR_MOVE  first;
+  YR_BLOCK_ITERATOR_MOVE  next;
+  YR_BLOCK_ITERATOR_FETCH fetch_data;
+
+};
+
+// a memory block in context with its data
+typedef struct _YR_BLOCK_CONTEXT
+{
+  uint8_t* data;
+  YR_MEMORY_BLOCK* block;
+
+} YR_BLOCK_CONTEXT;
+
+
+typedef struct _YR_PROCESS_CONTEXT
+{
+  uint8_t* data;
+  void* process_context;
+  YR_MEMORY_BLOCK* blocks;
+  YR_MEMORY_BLOCK* current;
+
+} YR_PROCESS_CONTEXT;
 
 
 typedef int (*YR_CALLBACK_FUNC)(
@@ -387,7 +436,7 @@ typedef struct _YR_SCAN_CONTEXT
 
   void* user_data;
 
-  YR_MEMORY_BLOCK*  mem_block;
+  YR_BLOCK_ITERATOR*  iterator;
   YR_HASH_TABLE*  objects_table;
   YR_CALLBACK_FUNC  callback;
 
