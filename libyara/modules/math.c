@@ -1,17 +1,30 @@
 /*
 Copyright (c) 2014-2015. The YARA Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <math.h>
@@ -80,7 +93,7 @@ define_function(data_entropy)
 
   YR_SCAN_CONTEXT* context = scan_context();
   YR_MEMORY_BLOCK* block = first_memory_block(context);
-  YR_BLOCK_ITERATOR* iterator = context->iterator;
+  YR_MEMORY_BLOCK_ITERATOR* iterator = context->iterator;
 
   if (offset < 0 || length < 0 || offset < block->base)
     return_float(UNDEFINED);
@@ -95,23 +108,26 @@ define_function(data_entropy)
     if (offset >= block->base &&
         offset < block->base + block->size)
     {
-      uint8_t* block_data = iterator->fetch_data(iterator);
-
-      if (block_data != NULL)
-      {
-        size_t data_offset = (size_t) (offset - block->base);
-        size_t data_len = (size_t) yr_min(
+      size_t data_offset = (size_t) (offset - block->base);
+      size_t data_len = (size_t) yr_min(
           length, (size_t) (block->size - data_offset));
 
-        total_len += data_len;
-        offset += data_len;
-        length -= data_len;
+      uint8_t* block_data = block->fetch_data(block);
 
-        for (i = 0; i < data_len; i++)
-        {
-          uint8_t c = *(block_data + data_offset + i);
-          data[c] += 1;
-        }
+      if (block_data == NULL)
+      {
+        yr_free(data);
+        return_float(UNDEFINED);
+      }
+
+      total_len += data_len;
+      offset += data_len;
+      length -= data_len;
+
+      for (i = 0; i < data_len; i++)
+      {
+        uint8_t c = *(block_data + data_offset + i);
+        data[c] += 1;
       }
 
       past_first_block = TRUE;
@@ -181,9 +197,13 @@ define_function(data_deviation)
   size_t total_len = 0;
   size_t i;
 
+  size_t data_offset = 0;
+  size_t data_len = 0;
+  uint8_t* block_data = NULL;
+
   YR_SCAN_CONTEXT* context = scan_context();
   YR_MEMORY_BLOCK* block = first_memory_block(context);
-  YR_BLOCK_ITERATOR* iterator = context->iterator;
+  YR_MEMORY_BLOCK_ITERATOR* iterator = context->iterator;
 
   if (offset < 0 || length < 0 || offset < block->base)
     return_float(UNDEFINED);
@@ -193,21 +213,20 @@ define_function(data_deviation)
     if (offset >= block->base &&
         offset < block->base + block->size)
     {
-      uint8_t* block_data = iterator->fetch_data(iterator);
+      data_offset = (size_t)(offset - block->base);
+      data_len = (size_t)yr_min(
+          length, (size_t)(block->size - data_offset));
+      block_data = block->fetch_data(block);
 
-      if (block_data != NULL)
-      {
-        size_t data_offset = (size_t) (offset - block->base);
-        size_t data_len = (size_t) yr_min(
-          length, (size_t) (block->size - data_offset));
+      if (block_data == NULL)
+        return_float(UNDEFINED);
 
-        total_len += data_len;
-        offset += data_len;
-        length -= data_len;
+      total_len += data_len;
+      offset += data_len;
+      length -= data_len;
 
-        for (i = 0; i < data_len; i++)
-          sum += fabs(((double)* (block_data + data_offset + i)) - mean);
-      }
+      for (i = 0; i < data_len; i++)
+        sum += fabs(((double)* (block_data + data_offset + i)) - mean);
 
       past_first_block = TRUE;
     }
@@ -256,7 +275,7 @@ define_function(data_mean)
 
   YR_SCAN_CONTEXT* context = scan_context();
   YR_MEMORY_BLOCK* block = first_memory_block(context);
-  YR_BLOCK_ITERATOR* iterator = context->iterator;
+  YR_MEMORY_BLOCK_ITERATOR* iterator = context->iterator;
 
   size_t total_len = 0;
   size_t i;
@@ -269,21 +288,21 @@ define_function(data_mean)
     if (offset >= block->base &&
         offset < block->base + block->size)
     {
-      uint8_t* block_data = iterator->fetch_data(iterator);
-
-      if (block_data != NULL)
-      {
-        size_t data_offset = (size_t) (offset - block->base);
-        size_t data_len = (size_t) yr_min(
+      size_t data_offset = (size_t) (offset - block->base);
+      size_t data_len = (size_t) yr_min(
           length, (size_t) (block->size - data_offset));
 
-        total_len += data_len;
-        offset += data_len;
-        length -= data_len;
+      uint8_t* block_data = block->fetch_data(block);
 
-        for (i = 0; i < data_len; i++)
-          sum += (double)* (block_data + data_offset + i);
-      }
+      if (block_data == NULL)
+        return_float(UNDEFINED);
+
+      total_len += data_len;
+      offset += data_len;
+      length -= data_len;
+
+      for (i = 0; i < data_len; i++)
+        sum += (double)* (block_data + data_offset + i);
 
       past_first_block = TRUE;
     }
@@ -320,7 +339,7 @@ define_function(data_serial_correlation)
 
   YR_SCAN_CONTEXT* context = scan_context();
   YR_MEMORY_BLOCK* block = first_memory_block(context);
-  YR_BLOCK_ITERATOR* iterator = context->iterator;
+  YR_MEMORY_BLOCK_ITERATOR* iterator = context->iterator;
 
   double sccun = 0;
   double scclast = 0;
@@ -337,26 +356,26 @@ define_function(data_serial_correlation)
     if (offset >= block->base &&
         offset < block->base + block->size)
     {
-      uint8_t* block_data = iterator->fetch_data(iterator);
-
-      if (block_data != NULL)
-      {
-        size_t data_offset = (size_t)(offset - block->base);
-        size_t data_len = (size_t) yr_min(
+      size_t data_offset = (size_t)(offset - block->base);
+      size_t data_len = (size_t) yr_min(
           length, (size_t) (block->size - data_offset));
 
-        total_len += data_len;
-        offset += data_len;
-        length -= data_len;
+      uint8_t* block_data = block->fetch_data(block);
 
-        for (i = 0; i < data_len; i++)
-        {
-          sccun = (double)* (block_data + data_offset + i);
-          scct1 += scclast * sccun;
-          scct2 += sccun;
-          scct3 += sccun * sccun;
-          scclast = sccun;
-        }
+      if (block_data == NULL)
+        return_float(UNDEFINED);
+
+      total_len += data_len;
+      offset += data_len;
+      length -= data_len;
+
+      for (i = 0; i < data_len; i++)
+      {
+        sccun = (double)* (block_data + data_offset + i);
+        scct1 += scclast * sccun;
+        scct2 += sccun;
+        scct3 += sccun * sccun;
+        scclast = sccun;
       }
 
       past_first_block = TRUE;
@@ -444,7 +463,7 @@ define_function(data_monte_carlo_pi)
 
   YR_SCAN_CONTEXT* context = scan_context();
   YR_MEMORY_BLOCK* block = first_memory_block(context);
-  YR_BLOCK_ITERATOR* iterator = context->iterator;
+  YR_MEMORY_BLOCK_ITERATOR* iterator = context->iterator;
 
   if (offset < 0 || length < 0 || offset < block->base)
     return_float(UNDEFINED);
@@ -455,38 +474,39 @@ define_function(data_monte_carlo_pi)
         offset < block->base + block->size)
     {
       unsigned int monte[6];
-      uint8_t* block_data = iterator->fetch_data(iterator);
 
-      if (block_data != NULL)
-      {
-        size_t data_offset = (size_t) (offset - block->base);
-        size_t data_len = (size_t) yr_min(
+      size_t data_offset = (size_t) (offset - block->base);
+      size_t data_len = (size_t) yr_min(
           length, (size_t) (block->size - data_offset));
 
-        offset += data_len;
-        length -= data_len;
+      uint8_t* block_data = block->fetch_data(block);
 
-        for (i = 0; i < data_len; i++)
+      if (block_data == NULL)
+        return_float(UNDEFINED);
+
+      offset += data_len;
+      length -= data_len;
+
+      for (i = 0; i < data_len; i++)
+      {
+        monte[i % 6] = (unsigned int)* (block_data + data_offset + i);
+
+        if (i % 6 == 5)
         {
-          monte[i % 6] = (unsigned int)* (block_data + data_offset + i);
+          double mx = 0;
+          double my = 0;
+          int j;
 
-          if (i % 6 == 5)
+          mcount++;
+
+          for (j = 0; j < 3; j++)
           {
-            double mx = 0;
-            double my = 0;
-            int j;
-
-            mcount++;
-
-            for (j = 0; j < 3; j++)
-            {
-              mx = (mx * 256.0) + monte[j];
-              my = (my * 256.0) + monte[j + 3];
-            }
-
-            if ((mx * mx + my * my) <= INCIRC)
-              inmont++;
+            mx = (mx * 256.0) + monte[j];
+            my = (my * 256.0) + monte[j + 3];
           }
+
+          if ((mx * mx + my * my) <= INCIRC)
+            inmont++;
         }
       }
 
@@ -506,7 +526,7 @@ define_function(data_monte_carlo_pi)
       break;
   }
 
-  if (!past_first_block)
+  if (!past_first_block || mcount == 0)
     return_float(UNDEFINED);
 
   mpi = 4.0 * ((double) inmont / mcount);
@@ -552,6 +572,9 @@ define_function(string_monte_carlo_pi)
         inmont++;
     }
   }
+
+  if (mcount == 0)
+    return_float(UNDEFINED);
 
   mpi = 4.0 * ((double) inmont / mcount);
   return_float(fabs((mpi - PI) / PI));
