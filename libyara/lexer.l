@@ -50,6 +50,12 @@ with noyywrap then we can remove this pragma.
 #include <string.h>
 #include <setjmp.h>
 
+#if defined(_WIN32) || defined(__CYGWIN__)
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include <yara/integers.h>
 #include <yara/lexer.h>
 #include <yara/sizedstr.h>
@@ -541,6 +547,7 @@ u?int(8|16|32)(be)? {
 <str>\\(.|\n) {
 
   yyerror(yyscanner, compiler, "illegal escape sequence");
+  yyterminate();
 }
 
 
@@ -563,6 +570,7 @@ u?int(8|16|32)(be)? {
   else
   {
     yyerror(yyscanner, compiler, "empty regular expression");
+    yyterminate();
   }
 
   BEGIN(INITIAL);
@@ -803,6 +811,54 @@ int yr_lex_parse_rules_file(
 
   yyset_in(rules_file, yyscanner);
   yyset_extra(compiler, yyscanner);
+  yyparse(yyscanner, compiler);
+  yylex_destroy(yyscanner);
+
+  return compiler->errors;
+}
+
+
+int yr_lex_parse_rules_fd(
+  YR_FILE_DESCRIPTOR rules_fd,
+  YR_COMPILER* compiler)
+{
+  yyscan_t yyscanner;
+
+  compiler->errors = 0;
+
+  if (setjmp(compiler->error_recovery) != 0)
+    return compiler->errors;
+
+  yylex_init(&yyscanner);
+
+  #if YYDEBUG
+  yydebug = 1;
+  #endif
+
+  char buf[1024];
+
+  yyset_extra(compiler, yyscanner);
+  while (1)
+  {
+#if defined(_WIN32) || defined(__CYGWIN__)
+    DWORD len;
+    if (!ReadFile(rules_fd, buf, sizeof(buf), &len, NULL))
+      break;
+#else
+    int len = read(rules_fd, buf, sizeof(buf));
+    if (len < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      else
+        break;
+    }
+#endif
+    if (len == 0)
+      break;
+    yy_scan_bytes(buf, len, yyscanner);
+  }
+
   yyparse(yyscanner, compiler);
   yylex_destroy(yyscanner);
 

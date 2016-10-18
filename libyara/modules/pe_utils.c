@@ -1,9 +1,44 @@
+/*
+Copyright (c) 2014-2015. The YARA Authors. All Rights Reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include <stdio.h>
+
+#if defined(_WIN32)
+#define timegm _mkgmtime
+#endif
+
 #include <string.h>
-#include <strings.h>
 
 #include <yara/utils.h>
 #include <yara/strutils.h>
 #include <yara/mem.h>
+#include <yara/integers.h>
 #include <yara/pe_utils.h>
 #include <yara/pe.h>
 
@@ -25,46 +60,46 @@ PIMAGE_NT_HEADERS32 pe_get_header(
 
   mz_header = (PIMAGE_DOS_HEADER) data;
 
-  if (mz_header->e_magic != IMAGE_DOS_SIGNATURE)
+  if (yr_le16toh(mz_header->e_magic) != IMAGE_DOS_SIGNATURE)
     return NULL;
 
-  if (mz_header->e_lfanew < 0)
+  if (yr_le32toh(mz_header->e_lfanew) < 0)
     return NULL;
 
-  headers_size = mz_header->e_lfanew + \
+  headers_size = yr_le32toh(mz_header->e_lfanew) +      \
                  sizeof(pe_header->Signature) + \
                  sizeof(IMAGE_FILE_HEADER);
 
   if (data_size < headers_size)
     return NULL;
 
-  pe_header = (PIMAGE_NT_HEADERS32) (data + mz_header->e_lfanew);
+  pe_header = (PIMAGE_NT_HEADERS32) (data + yr_le32toh(mz_header->e_lfanew));
 
-  headers_size += pe_header->FileHeader.SizeOfOptionalHeader;
+  headers_size += yr_le16toh(pe_header->FileHeader.SizeOfOptionalHeader);
 
-  if (pe_header->Signature == IMAGE_NT_SIGNATURE &&
-      (pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_UNKNOWN ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_AM33 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_ARM ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_ARMNT ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_ARM64 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_EBC ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_I386 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_IA64 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_M32R ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_MIPS16 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_MIPSFPU ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_MIPSFPU16 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_POWERPC ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_POWERPCFP ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_R4000 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_SH3 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_SH3DSP ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_SH4 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_SH5 ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_THUMB ||
-       pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_WCEMIPSV2) &&
+  if (yr_le32toh(pe_header->Signature) == IMAGE_NT_SIGNATURE &&
+      (yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_UNKNOWN ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_AM33 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_AMD64 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_ARM ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_ARMNT ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_ARM64 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_EBC ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_I386 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_IA64 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_M32R ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_MIPS16 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_MIPSFPU ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_MIPSFPU16 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_POWERPC ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_POWERPCFP ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_R4000 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_SH3 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_SH3DSP ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_SH4 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_SH5 ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_THUMB ||
+       yr_le16toh(pe_header->FileHeader.Machine) == IMAGE_FILE_MACHINE_WCEMIPSV2) &&
       data_size > headers_size)
   {
     return pe_header;
@@ -91,12 +126,6 @@ PIMAGE_DATA_DIRECTORY pe_get_directory_entry(
 }
 
 
-#define OptionalHeader(pe,field)                \
-  (IS_64BITS_PE(pe) ?                           \
-   pe->header64->OptionalHeader.field :         \
-   pe->header->OptionalHeader.field)
-
-
 int64_t pe_rva_to_offset(
     PE* pe,
     uint64_t rva)
@@ -115,17 +144,17 @@ int64_t pe_rva_to_offset(
   int alignment = 0;
   int rest = 0;
 
-  while(i < yr_min(pe->header->FileHeader.NumberOfSections, MAX_PE_SECTIONS))
+  while(i < yr_min(yr_le16toh(pe->header->FileHeader.NumberOfSections), MAX_PE_SECTIONS))
   {
     if (struct_fits_in_pe(pe, section, IMAGE_SECTION_HEADER))
     {
-      if (lowest_section_rva > section->VirtualAddress)
+      if (lowest_section_rva > yr_le32toh(section->VirtualAddress))
       {
-        lowest_section_rva = section->VirtualAddress;
+        lowest_section_rva = yr_le32toh(section->VirtualAddress);
       }
 
-      if (rva >= section->VirtualAddress &&
-          section_rva <= section->VirtualAddress)
+      if (rva >= yr_le32toh(section->VirtualAddress) &&
+          section_rva <= yr_le32toh(section->VirtualAddress))
       {
         // Round section_offset
         //
@@ -138,11 +167,11 @@ int64_t pe_rva_to_offset(
         // If FileAlignment is >= 0x200, it is apparently ignored (see
         // Ero Carreras's pefile.py, PE.adjust_FileAlignment).
 
-        alignment = yr_min(OptionalHeader(pe, FileAlignment), 0x200);
+        alignment = yr_min(yr_le32toh(OptionalHeader(pe, FileAlignment)), 0x200);
 
-        section_rva = section->VirtualAddress;
-        section_offset = section->PointerToRawData;
-        section_raw_size = section->SizeOfRawData;
+        section_rva = yr_le32toh(section->VirtualAddress);
+        section_offset = yr_le32toh(section->PointerToRawData);
+        section_raw_size = yr_le32toh(section->SizeOfRawData);
 
         if (alignment)
         {
@@ -188,17 +217,6 @@ int64_t pe_rva_to_offset(
   return result;
 }
 
-
-#include <stdio.h>
-
-#include <yara/mem.h>
-#include <yara/integers.h>
-
-#if defined(WIN32)
-#include <string.h>
-#define strncasecmp _strnicmp
-#define timegm _mkgmtime
-#endif
 
 #if !HAVE_TIMEGM && !defined(WIN32)
 

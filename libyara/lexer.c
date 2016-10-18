@@ -9,7 +9,7 @@
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2
 #define YY_FLEX_MINOR_VERSION 6
-#define YY_FLEX_SUBMINOR_VERSION 0
+#define YY_FLEX_SUBMINOR_VERSION 1
 #if YY_FLEX_SUBMINOR_VERSION > 0
 #define FLEX_BETA
 #endif
@@ -88,25 +88,13 @@ typedef unsigned int flex_uint32_t;
 
 #endif /* ! FLEXINT_H */
 
-#ifdef __cplusplus
-
-/* The "const" storage-class-modifier is valid. */
-#define YY_USE_CONST
-
-#else	/* ! __cplusplus */
-
-/* C99 requires __STDC__ to be defined as 1. */
-#if defined (__STDC__)
-
-#define YY_USE_CONST
-
-#endif	/* defined (__STDC__) */
-#endif	/* ! __cplusplus */
-
-#ifdef YY_USE_CONST
+/* TODO: this is always defined, so inline it */
 #define yyconst const
+
+#if defined(__GNUC__) && __GNUC__ >= 3
+#define yynoreturn __attribute__((__noreturn__))
 #else
-#define yyconst
+#define yynoreturn
 #endif
 
 /* Returned upon end-of-file. */
@@ -238,12 +226,12 @@ struct yy_buffer_state
 	/* Size of input buffer in bytes, not including room for EOB
 	 * characters.
 	 */
-	yy_size_t yy_buf_size;
+	int yy_buf_size;
 
 	/* Number of characters read into yy_ch_buf, not including EOB
 	 * characters.
 	 */
-	yy_size_t yy_n_chars;
+	int yy_n_chars;
 
 	/* Whether we "own" the buffer - i.e., we know we created it,
 	 * and can realloc() it to grow it, and should free() it to
@@ -322,7 +310,7 @@ static void yara_yy_init_buffer (YY_BUFFER_STATE b,FILE *file ,yyscan_t yyscanne
 
 YY_BUFFER_STATE yara_yy_scan_buffer (char *base,yy_size_t size ,yyscan_t yyscanner );
 YY_BUFFER_STATE yara_yy_scan_string (yyconst char *yy_str ,yyscan_t yyscanner );
-YY_BUFFER_STATE yara_yy_scan_bytes (yyconst char *bytes,yy_size_t len ,yyscan_t yyscanner );
+YY_BUFFER_STATE yara_yy_scan_bytes (yyconst char *bytes,int len ,yyscan_t yyscanner );
 
 void *yara_yyalloc (yy_size_t ,yyscan_t yyscanner );
 void *yara_yyrealloc (void *,yy_size_t ,yyscan_t yyscanner );
@@ -366,17 +354,14 @@ typedef int yy_state_type;
 static yy_state_type yy_get_previous_state (yyscan_t yyscanner );
 static yy_state_type yy_try_NUL_trans (yy_state_type current_state  ,yyscan_t yyscanner);
 static int yy_get_next_buffer (yyscan_t yyscanner );
-#if defined(__GNUC__) && __GNUC__ >= 3
-__attribute__((__noreturn__))
-#endif
-static void yy_fatal_error (yyconst char msg[] ,yyscan_t yyscanner );
+static void yynoreturn yy_fatal_error (yyconst char* msg ,yyscan_t yyscanner );
 
 /* Done after the current pattern has been matched and before the
  * corresponding action - sets up yytext.
  */
 #define YY_DO_BEFORE_ACTION \
 	yyg->yytext_ptr = yy_bp; \
-	yyleng = (size_t) (yy_cp - yy_bp); \
+	yyleng = (int) (yy_cp - yy_bp); \
 	yyg->yy_hold_char = *yy_cp; \
 	*yy_cp = '\0'; \
 	yyg->yy_c_buf_p = yy_cp;
@@ -757,6 +742,12 @@ with noyywrap then we can remove this pragma.
 #include <string.h>
 #include <setjmp.h>
 
+#if defined(_WIN32) || defined(__CYGWIN__)
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include <yara/integers.h>
 #include <yara/lexer.h>
 #include <yara/sizedstr.h>
@@ -809,7 +800,7 @@ with noyywrap then we can remove this pragma.
 
 
 
-#line 813 "lexer.c"
+#line 804 "lexer.c"
 
 #define INITIAL 0
 #define str 1
@@ -842,8 +833,8 @@ struct yyguts_t
     size_t yy_buffer_stack_max; /**< capacity of stack. */
     YY_BUFFER_STATE * yy_buffer_stack; /**< Stack as an array. */
     char yy_hold_char;
-    yy_size_t yy_n_chars;
-    yy_size_t yyleng_r;
+    int yy_n_chars;
+    int yyleng_r;
     char *yy_c_buf_p;
     int yy_init;
     int yy_start;
@@ -896,7 +887,7 @@ FILE *yara_yyget_out (yyscan_t yyscanner );
 
 void yara_yyset_out  (FILE * _out_str ,yyscan_t yyscanner );
 
-yy_size_t yara_yyget_leng (yyscan_t yyscanner );
+			int yara_yyget_leng (yyscan_t yyscanner );
 
 char *yara_yyget_text (yyscan_t yyscanner );
 
@@ -961,7 +952,7 @@ static int input (yyscan_t yyscanner );
 /* This used to be an fputs(), but since the string might contain NUL's,
  * we now use fwrite().
  */
-#define ECHO do { if (fwrite( yytext, yyleng, 1, yyout )) {} } while (0)
+#define ECHO do { if (fwrite( yytext, (size_t) yyleng, 1, yyout )) {} } while (0)
 #endif
 
 /* Gets input and stuffs it into "buf".  number of characters read, or YY_NULL,
@@ -985,7 +976,7 @@ static int input (yyscan_t yyscanner );
 	else \
 		{ \
 		errno=0; \
-		while ( (result = fread(buf, 1, max_size, yyin))==0 && ferror(yyin)) \
+		while ( (result = (int) fread(buf, 1, max_size, yyin))==0 && ferror(yyin)) \
 			{ \
 			if( errno != EINTR) \
 				{ \
@@ -1086,10 +1077,10 @@ YY_DECL
 		}
 
 	{
-#line 123 "lexer.l"
+#line 129 "lexer.l"
 
 
-#line 1093 "lexer.c"
+#line 1084 "lexer.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -1119,7 +1110,7 @@ yy_match:
 				if ( yy_current_state >= 243 )
 					yy_c = yy_meta[(unsigned int) yy_c];
 				}
-			yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
+			yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
 			++yy_cp;
 			}
 		while ( yy_current_state != 242 );
@@ -1156,208 +1147,208 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 125 "lexer.l"
+#line 131 "lexer.l"
 { return _DOT_DOT_;     }
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 126 "lexer.l"
+#line 132 "lexer.l"
 { return _LT_;          }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 127 "lexer.l"
+#line 133 "lexer.l"
 { return _GT_;          }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 128 "lexer.l"
+#line 134 "lexer.l"
 { return _LE_;          }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 129 "lexer.l"
+#line 135 "lexer.l"
 { return _GE_;          }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 130 "lexer.l"
+#line 136 "lexer.l"
 { return _EQ_;          }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 131 "lexer.l"
+#line 137 "lexer.l"
 { return _NEQ_;         }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 132 "lexer.l"
+#line 138 "lexer.l"
 { return _SHIFT_LEFT_;  }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 133 "lexer.l"
+#line 139 "lexer.l"
 { return _SHIFT_RIGHT_; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 134 "lexer.l"
+#line 140 "lexer.l"
 { return _PRIVATE_;     }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 135 "lexer.l"
+#line 141 "lexer.l"
 { return _GLOBAL_;      }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 136 "lexer.l"
+#line 142 "lexer.l"
 { return _RULE_;        }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 137 "lexer.l"
+#line 143 "lexer.l"
 { return _META_;        }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 138 "lexer.l"
+#line 144 "lexer.l"
 { return _STRINGS_;     }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 139 "lexer.l"
+#line 145 "lexer.l"
 { return _ASCII_;       }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 140 "lexer.l"
+#line 146 "lexer.l"
 { return _WIDE_;        }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 141 "lexer.l"
+#line 147 "lexer.l"
 { return _FULLWORD_;    }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 142 "lexer.l"
+#line 148 "lexer.l"
 { return _NOCASE_;      }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 143 "lexer.l"
+#line 149 "lexer.l"
 { return _CONDITION_;   }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 144 "lexer.l"
+#line 150 "lexer.l"
 { return _TRUE_;        }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 145 "lexer.l"
+#line 151 "lexer.l"
 { return _FALSE_;       }
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 146 "lexer.l"
+#line 152 "lexer.l"
 { return _NOT_;         }
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 147 "lexer.l"
+#line 153 "lexer.l"
 { return _AND_;         }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 148 "lexer.l"
+#line 154 "lexer.l"
 { return _OR_;          }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 149 "lexer.l"
+#line 155 "lexer.l"
 { return _AT_;          }
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 150 "lexer.l"
+#line 156 "lexer.l"
 { return _IN_;          }
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 151 "lexer.l"
+#line 157 "lexer.l"
 { return _OF_;          }
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 152 "lexer.l"
+#line 158 "lexer.l"
 { return _THEM_;        }
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 153 "lexer.l"
+#line 159 "lexer.l"
 { return _FOR_;         }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 154 "lexer.l"
+#line 160 "lexer.l"
 { return _ALL_;         }
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 155 "lexer.l"
+#line 161 "lexer.l"
 { return _ANY_;         }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 156 "lexer.l"
+#line 162 "lexer.l"
 { return _ENTRYPOINT_;  }
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 157 "lexer.l"
+#line 163 "lexer.l"
 { return _FILESIZE_;    }
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 158 "lexer.l"
+#line 164 "lexer.l"
 { return _MATCHES_;     }
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 159 "lexer.l"
+#line 165 "lexer.l"
 { return _CONTAINS_;    }
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 160 "lexer.l"
+#line 166 "lexer.l"
 { return _IMPORT_;      }
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 163 "lexer.l"
+#line 169 "lexer.l"
 { BEGIN(comment);       }
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 164 "lexer.l"
+#line 170 "lexer.l"
 { BEGIN(INITIAL);       }
 	YY_BREAK
 case 39:
 /* rule 39 can match eol */
 YY_RULE_SETUP
-#line 165 "lexer.l"
+#line 171 "lexer.l"
 { /* skip comments */   }
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 168 "lexer.l"
+#line 174 "lexer.l"
 { /* skip single-line comments */ }
 	YY_BREAK
 case 41:
 YY_RULE_SETUP
-#line 171 "lexer.l"
+#line 177 "lexer.l"
 {
                           yyextra->lex_buf_ptr = yyextra->lex_buf;
                           yyextra->lex_buf_len = 0;
@@ -1367,12 +1358,12 @@ YY_RULE_SETUP
 case 42:
 /* rule 42 can match eol */
 YY_RULE_SETUP
-#line 178 "lexer.l"
+#line 184 "lexer.l"
 { YYTEXT_TO_BUFFER; }
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 181 "lexer.l"
+#line 187 "lexer.l"
 {
 
   char            buffer[1024];
@@ -1488,7 +1479,7 @@ case YY_STATE_EOF(str):
 case YY_STATE_EOF(regexp):
 case YY_STATE_EOF(include):
 case YY_STATE_EOF(comment):
-#line 293 "lexer.l"
+#line 299 "lexer.l"
 {
 
   YR_COMPILER* compiler = yara_yyget_extra(yyscanner);
@@ -1510,7 +1501,7 @@ case YY_STATE_EOF(comment):
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 313 "lexer.l"
+#line 319 "lexer.l"
 {
 
   yylval->c_string = yr_strdup(yytext);
@@ -1526,7 +1517,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 327 "lexer.l"
+#line 333 "lexer.l"
 {
 
   yylval->c_string = yr_strdup(yytext);
@@ -1542,7 +1533,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 341 "lexer.l"
+#line 347 "lexer.l"
 {
 
   yylval->c_string = yr_strdup(yytext);
@@ -1559,7 +1550,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 47:
 YY_RULE_SETUP
-#line 356 "lexer.l"
+#line 362 "lexer.l"
 {
 
   yylval->c_string = yr_strdup(yytext);
@@ -1576,7 +1567,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 371 "lexer.l"
+#line 377 "lexer.l"
 {
 
   yylval->c_string = yr_strdup(yytext);
@@ -1593,7 +1584,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 386 "lexer.l"
+#line 392 "lexer.l"
 {
 
   char* text = yytext;
@@ -1634,7 +1625,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
-#line 425 "lexer.l"
+#line 431 "lexer.l"
 {
 
   if (strlen(yytext) > 128)
@@ -1655,7 +1646,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 444 "lexer.l"
+#line 450 "lexer.l"
 {
 
   #ifdef _MSC_VER
@@ -1677,7 +1668,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
-#line 463 "lexer.l"
+#line 469 "lexer.l"
 {
   yylval->double_ = atof(yytext);
   return _DOUBLE_;
@@ -1685,7 +1676,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 53:
 YY_RULE_SETUP
-#line 468 "lexer.l"
+#line 474 "lexer.l"
 {
 
   yylval->integer = xtoi(yytext + 2);
@@ -1694,7 +1685,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 54:
 YY_RULE_SETUP
-#line 475 "lexer.l"
+#line 481 "lexer.l"
 {     /* saw closing quote - all done */
 
   ALLOC_SIZED_STRING(s, yyextra->lex_buf_len);
@@ -1710,7 +1701,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 55:
 YY_RULE_SETUP
-#line 489 "lexer.l"
+#line 495 "lexer.l"
 {
 
   LEX_CHECK_SPACE_OK("\t", yyextra->lex_buf_len, LEX_BUF_SIZE);
@@ -1720,7 +1711,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 56:
 YY_RULE_SETUP
-#line 497 "lexer.l"
+#line 503 "lexer.l"
 {
 
   LEX_CHECK_SPACE_OK("\n", yyextra->lex_buf_len, LEX_BUF_SIZE);
@@ -1730,7 +1721,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 57:
 YY_RULE_SETUP
-#line 505 "lexer.l"
+#line 511 "lexer.l"
 {
 
   LEX_CHECK_SPACE_OK("\"", yyextra->lex_buf_len, LEX_BUF_SIZE);
@@ -1740,7 +1731,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 58:
 YY_RULE_SETUP
-#line 513 "lexer.l"
+#line 519 "lexer.l"
 {
 
   LEX_CHECK_SPACE_OK("\\", yyextra->lex_buf_len, LEX_BUF_SIZE);
@@ -1750,7 +1741,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 59:
 YY_RULE_SETUP
-#line 521 "lexer.l"
+#line 527 "lexer.l"
 {
 
    int result;
@@ -1763,13 +1754,13 @@ YY_RULE_SETUP
 	YY_BREAK
 case 60:
 YY_RULE_SETUP
-#line 532 "lexer.l"
+#line 538 "lexer.l"
 { YYTEXT_TO_BUFFER; }
 	YY_BREAK
 case 61:
 /* rule 61 can match eol */
 YY_RULE_SETUP
-#line 535 "lexer.l"
+#line 541 "lexer.l"
 {
 
   yyerror(yyscanner, compiler, "unterminated string");
@@ -1779,15 +1770,16 @@ YY_RULE_SETUP
 case 62:
 /* rule 62 can match eol */
 YY_RULE_SETUP
-#line 541 "lexer.l"
+#line 547 "lexer.l"
 {
 
   yyerror(yyscanner, compiler, "illegal escape sequence");
+  yyterminate();
 }
 	YY_BREAK
 case 63:
 YY_RULE_SETUP
-#line 547 "lexer.l"
+#line 554 "lexer.l"
 {
 
   if (yyextra->lex_buf_len > 0)
@@ -1807,6 +1799,7 @@ YY_RULE_SETUP
   else
   {
     yyerror(yyscanner, compiler, "empty regular expression");
+    yyterminate();
   }
 
   BEGIN(INITIAL);
@@ -1815,7 +1808,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 64:
 YY_RULE_SETUP
-#line 573 "lexer.l"
+#line 581 "lexer.l"
 {
 
   LEX_CHECK_SPACE_OK("/", yyextra->lex_buf_len, LEX_BUF_SIZE);
@@ -1825,7 +1818,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 65:
 YY_RULE_SETUP
-#line 581 "lexer.l"
+#line 589 "lexer.l"
 {
 
   LEX_CHECK_SPACE_OK("\\.", yyextra->lex_buf_len, LEX_BUF_SIZE);
@@ -1836,13 +1829,13 @@ YY_RULE_SETUP
 	YY_BREAK
 case 66:
 YY_RULE_SETUP
-#line 590 "lexer.l"
+#line 598 "lexer.l"
 { YYTEXT_TO_BUFFER; }
 	YY_BREAK
 case 67:
 /* rule 67 can match eol */
 YY_RULE_SETUP
-#line 593 "lexer.l"
+#line 601 "lexer.l"
 {
 
   yyerror(yyscanner, compiler, "unterminated regular expression");
@@ -1851,7 +1844,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 68:
 YY_RULE_SETUP
-#line 600 "lexer.l"
+#line 608 "lexer.l"
 {
 
   yyextra->lex_buf_ptr = yyextra->lex_buf;
@@ -1861,7 +1854,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 69:
 YY_RULE_SETUP
-#line 608 "lexer.l"
+#line 616 "lexer.l"
 {
 
   yyextra->lex_buf_ptr = yyextra->lex_buf;
@@ -1872,7 +1865,7 @@ YY_RULE_SETUP
 case 70:
 /* rule 70 can match eol */
 YY_RULE_SETUP
-#line 616 "lexer.l"
+#line 624 "lexer.l"
 {
   // Match hex-digits with whitespace or comments. The latter are stripped
   // out by hex_lexer.l
@@ -1888,12 +1881,12 @@ YY_RULE_SETUP
 case 71:
 /* rule 71 can match eol */
 YY_RULE_SETUP
-#line 629 "lexer.l"
+#line 637 "lexer.l"
 /* skip whitespace */
 	YY_BREAK
 case 72:
 YY_RULE_SETUP
-#line 631 "lexer.l"
+#line 639 "lexer.l"
 {
 
   if (yytext[0] >= 32 && yytext[0] < 127)
@@ -1909,10 +1902,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 73:
 YY_RULE_SETUP
-#line 644 "lexer.l"
+#line 652 "lexer.l"
 ECHO;
 	YY_BREAK
-#line 1916 "lexer.c"
+#line 1909 "lexer.c"
 
 	case YY_END_OF_BUFFER:
 		{
@@ -2099,7 +2092,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 
 	else
 		{
-			yy_size_t num_to_read =
+			int num_to_read =
 			YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
 
 		while ( num_to_read <= 0 )
@@ -2113,7 +2106,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 
 			if ( b->yy_is_our_buffer )
 				{
-				yy_size_t new_size = b->yy_buf_size * 2;
+				int new_size = b->yy_buf_size * 2;
 
 				if ( new_size <= 0 )
 					b->yy_buf_size += b->yy_buf_size / 8;
@@ -2126,7 +2119,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 				}
 			else
 				/* Can't grow it, we don't own it. */
-				b->yy_ch_buf = 0;
+				b->yy_ch_buf = NULL;
 
 			if ( ! b->yy_ch_buf )
 				YY_FATAL_ERROR(
@@ -2168,9 +2161,9 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 	else
 		ret_val = EOB_ACT_CONTINUE_SCAN;
 
-	if ((yy_size_t) (yyg->yy_n_chars + number_to_move) > YY_CURRENT_BUFFER_LVALUE->yy_buf_size) {
+	if ((int) (yyg->yy_n_chars + number_to_move) > YY_CURRENT_BUFFER_LVALUE->yy_buf_size) {
 		/* Extend the array by 50%, plus the number we really need. */
-		yy_size_t new_size = yyg->yy_n_chars + number_to_move + (yyg->yy_n_chars >> 1);
+		int new_size = yyg->yy_n_chars + number_to_move + (yyg->yy_n_chars >> 1);
 		YY_CURRENT_BUFFER_LVALUE->yy_ch_buf = (char *) yara_yyrealloc((void *) YY_CURRENT_BUFFER_LVALUE->yy_ch_buf,new_size ,yyscanner );
 		if ( ! YY_CURRENT_BUFFER_LVALUE->yy_ch_buf )
 			YY_FATAL_ERROR( "out of dynamic memory in yy_get_next_buffer()" );
@@ -2209,7 +2202,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 			if ( yy_current_state >= 243 )
 				yy_c = yy_meta[(unsigned int) yy_c];
 			}
-		yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
+		yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
 		}
 
 	return yy_current_state;
@@ -2238,7 +2231,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 		if ( yy_current_state >= 243 )
 			yy_c = yy_meta[(unsigned int) yy_c];
 		}
-	yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
+	yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
 	yy_is_jam = (yy_current_state == 242);
 
 	(void)yyg;
@@ -2274,7 +2267,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 
 		else
 			{ /* need more input */
-			yy_size_t offset = yyg->yy_c_buf_p - yyg->yytext_ptr;
+			int offset = yyg->yy_c_buf_p - yyg->yytext_ptr;
 			++yyg->yy_c_buf_p;
 
 			switch ( yy_get_next_buffer( yyscanner ) )
@@ -2298,7 +2291,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 				case EOB_ACT_END_OF_FILE:
 					{
 					if ( yara_yywrap(yyscanner ) )
-						return EOF;
+						return 0;
 
 					if ( ! yyg->yy_did_buffer_switch_on_eof )
 						YY_NEW_FILE;
@@ -2561,7 +2554,7 @@ void yara_yypop_buffer_state (yyscan_t yyscanner)
  */
 static void yara_yyensure_buffer_stack (yyscan_t yyscanner)
 {
-	yy_size_t num_to_alloc;
+	int num_to_alloc;
     struct yyguts_t * yyg = (struct yyguts_t*)yyscanner;
 
 	if (!yyg->yy_buffer_stack) {
@@ -2570,7 +2563,7 @@ static void yara_yyensure_buffer_stack (yyscan_t yyscanner)
 		 * scanner will even need a stack. We use 2 instead of 1 to avoid an
 		 * immediate realloc on the next call.
          */
-		num_to_alloc = 1; // After all that talk, this was set to 1 anyways...
+      num_to_alloc = 1; /* After all that talk, this was set to 1 anyways... */
 		yyg->yy_buffer_stack = (struct yy_buffer_state**)yara_yyalloc
 								(num_to_alloc * sizeof(struct yy_buffer_state*)
 								, yyscanner);
@@ -2617,7 +2610,7 @@ YY_BUFFER_STATE yara_yy_scan_buffer  (char * base, yy_size_t  size , yyscan_t yy
 	     base[size-2] != YY_END_OF_BUFFER_CHAR ||
 	     base[size-1] != YY_END_OF_BUFFER_CHAR )
 		/* They forgot to leave room for the EOB's. */
-		return 0;
+		return NULL;
 
 	b = (YY_BUFFER_STATE) yara_yyalloc(sizeof( struct yy_buffer_state ) ,yyscanner );
 	if ( ! b )
@@ -2626,7 +2619,7 @@ YY_BUFFER_STATE yara_yy_scan_buffer  (char * base, yy_size_t  size , yyscan_t yy
 	b->yy_buf_size = size - 2;	/* "- 2" to take care of EOB's */
 	b->yy_buf_pos = b->yy_ch_buf = base;
 	b->yy_is_our_buffer = 0;
-	b->yy_input_file = 0;
+	b->yy_input_file = NULL;
 	b->yy_n_chars = b->yy_buf_size;
 	b->yy_is_interactive = 0;
 	b->yy_at_bol = 1;
@@ -2649,7 +2642,7 @@ YY_BUFFER_STATE yara_yy_scan_buffer  (char * base, yy_size_t  size , yyscan_t yy
 YY_BUFFER_STATE yara_yy_scan_string (yyconst char * yystr , yyscan_t yyscanner)
 {
     
-	return yara_yy_scan_bytes(yystr,strlen(yystr) ,yyscanner);
+	return yara_yy_scan_bytes(yystr,(int) strlen(yystr) ,yyscanner);
 }
 
 /** Setup the input buffer state to scan the given bytes. The next call to yara_yylex() will
@@ -2659,7 +2652,7 @@ YY_BUFFER_STATE yara_yy_scan_string (yyconst char * yystr , yyscan_t yyscanner)
  * @param yyscanner The scanner object.
  * @return the newly allocated buffer state object.
  */
-YY_BUFFER_STATE yara_yy_scan_bytes  (yyconst char * yybytes, yy_size_t  _yybytes_len , yyscan_t yyscanner)
+YY_BUFFER_STATE yara_yy_scan_bytes  (yyconst char * yybytes, int  _yybytes_len , yyscan_t yyscanner)
 {
 	YY_BUFFER_STATE b;
 	char *buf;
@@ -2667,7 +2660,7 @@ YY_BUFFER_STATE yara_yy_scan_bytes  (yyconst char * yybytes, yy_size_t  _yybytes
 	yy_size_t i;
     
 	/* Get memory for full buffer, including space for trailing EOB's. */
-	n = _yybytes_len + 2;
+	n = (yy_size_t) _yybytes_len + 2;
 	buf = (char *) yara_yyalloc(n ,yyscanner );
 	if ( ! buf )
 		YY_FATAL_ERROR( "out of dynamic memory in yara_yy_scan_bytes()" );
@@ -2693,7 +2686,7 @@ YY_BUFFER_STATE yara_yy_scan_bytes  (yyconst char * yybytes, yy_size_t  _yybytes
 #define YY_EXIT_FAILURE 2
 #endif
 
-static void yy_fatal_error (yyconst char* msg , yyscan_t yyscanner)
+static void yynoreturn yy_fatal_error (yyconst char* msg , yyscan_t yyscanner)
 {
 	struct yyguts_t * yyg = (struct yyguts_t*)yyscanner;
 	(void)yyg;
@@ -2776,7 +2769,7 @@ FILE *yara_yyget_out  (yyscan_t yyscanner)
 /** Get the length of the current token.
  * @param yyscanner The scanner object.
  */
-yy_size_t yara_yyget_leng  (yyscan_t yyscanner)
+int yara_yyget_leng  (yyscan_t yyscanner)
 {
     struct yyguts_t * yyg = (struct yyguts_t*)yyscanner;
     return yyleng;
@@ -2947,10 +2940,10 @@ static int yy_init_globals (yyscan_t yyscanner)
      * This function is called from yara_yylex_destroy(), so don't allocate here.
      */
 
-    yyg->yy_buffer_stack = 0;
+    yyg->yy_buffer_stack = NULL;
     yyg->yy_buffer_stack_top = 0;
     yyg->yy_buffer_stack_max = 0;
-    yyg->yy_c_buf_p = (char *) 0;
+    yyg->yy_c_buf_p = NULL;
     yyg->yy_init = 0;
     yyg->yy_start = 0;
 
@@ -2963,8 +2956,8 @@ static int yy_init_globals (yyscan_t yyscanner)
     yyin = stdin;
     yyout = stdout;
 #else
-    yyin = (FILE *) 0;
-    yyout = (FILE *) 0;
+    yyin = NULL;
+    yyout = NULL;
 #endif
 
     /* For future reference: Set errno on error, since we are called by
@@ -3034,7 +3027,7 @@ void *yara_yyalloc (yy_size_t  size , yyscan_t yyscanner)
 {
 	struct yyguts_t * yyg = (struct yyguts_t*)yyscanner;
 	(void)yyg;
-	return (void *) malloc( size );
+	return malloc(size);
 }
 
 void *yara_yyrealloc  (void * ptr, yy_size_t  size , yyscan_t yyscanner)
@@ -3049,7 +3042,7 @@ void *yara_yyrealloc  (void * ptr, yy_size_t  size , yyscan_t yyscanner)
 	 * any pointer type to void*, and deal with argument conversions
 	 * as though doing an assignment.
 	 */
-	return (void *) realloc( (char *) ptr, size );
+	return realloc(ptr, size);
 }
 
 void yara_yyfree (void * ptr , yyscan_t yyscanner)
@@ -3061,7 +3054,7 @@ void yara_yyfree (void * ptr , yyscan_t yyscanner)
 
 #define YYTABLES_NAME "yytables"
 
-#line 644 "lexer.l"
+#line 652 "lexer.l"
 
 
 
@@ -3225,6 +3218,54 @@ int yr_lex_parse_rules_file(
 
   yara_yyset_in(rules_file,yyscanner);
   yara_yyset_extra(compiler,yyscanner);
+  yyparse(yyscanner, compiler);
+  yara_yylex_destroy(yyscanner);
+
+  return compiler->errors;
+}
+
+
+int yr_lex_parse_rules_fd(
+  YR_FILE_DESCRIPTOR rules_fd,
+  YR_COMPILER* compiler)
+{
+  yyscan_t yyscanner;
+
+  compiler->errors = 0;
+
+  if (setjmp(compiler->error_recovery) != 0)
+    return compiler->errors;
+
+  yara_yylex_init(&yyscanner);
+
+  #if YYDEBUG
+  yydebug = 1;
+  #endif
+
+  char buf[1024];
+
+  yara_yyset_extra(compiler,yyscanner);
+  while (1)
+  {
+#if defined(_WIN32) || defined(__CYGWIN__)
+    DWORD len;
+    if (!ReadFile(rules_fd, buf, sizeof(buf), &len, NULL))
+      break;
+#else
+    int len = read(rules_fd, buf, sizeof(buf));
+    if (len < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      else
+        break;
+    }
+#endif
+    if (len == 0)
+      break;
+    yara_yy_scan_bytes(buf,len,yyscanner);
+  }
+
   yyparse(yyscanner, compiler);
   yara_yylex_destroy(yyscanner);
 

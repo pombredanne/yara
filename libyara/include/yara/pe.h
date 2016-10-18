@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define YR_PE_H
 
 #include <yara/types.h>
+#include <yara/utils.h>
 
 #pragma pack(push, 1)
 
@@ -290,11 +291,6 @@ typedef struct _IMAGE_OPTIONAL_HEADER64 {
 #define IMAGE_NT_OPTIONAL_HDR32_MAGIC      0x10b
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC      0x20b
 
-#define OptionalHeader(pe,field)                \
-  (IS_64BITS_PE(pe) ?                           \
-   pe->header64->OptionalHeader.field :         \
-   pe->header->OptionalHeader.field)
-
 
 typedef struct _IMAGE_NT_HEADERS32 {
     DWORD Signature;
@@ -311,58 +307,13 @@ typedef struct _IMAGE_NT_HEADERS64 {
 
 } IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
 
-
-//
-// Imports are stored in a linked list. Each node (IMPORTED_DLL) contains the
-// name of the DLL and a pointer to another linked list of IMPORTED_FUNCTION
-// structures containing the names of imported functions.
-//
-
-typedef struct _IMPORTED_DLL
-{
-  char *name;
-
-  struct _IMPORTED_FUNCTION *functions;
-  struct _IMPORTED_DLL *next;
-
-} IMPORTED_DLL, *PIMPORTED_DLL;
-
-
-typedef struct _IMPORTED_FUNCTION
-{
-  char *name;
-  uint8_t has_ordinal;
-  uint16_t ordinal;
-
-  struct _IMPORTED_FUNCTION *next;
-
-} IMPORTED_FUNCTION, *PIMPORTED_FUNCTION;
-
-
-typedef struct _PE
-{
-  uint8_t* data;
-  size_t data_size;
-
-  union {
-    PIMAGE_NT_HEADERS32 header;
-    PIMAGE_NT_HEADERS64 header64;
-  };
-
-  YR_OBJECT* object;
-  IMPORTED_DLL* imported_dlls;
-  uint32_t resources;
-
-} PE;
-
-
 // IMAGE_FIRST_SECTION doesn't need 32/64 versions since the file header is
 // the same either way.
 
 #define IMAGE_FIRST_SECTION( ntheader ) ((PIMAGE_SECTION_HEADER) \
     ((BYTE*)ntheader + \
      FIELD_OFFSET( IMAGE_NT_HEADERS32, OptionalHeader ) + \
-     ((PIMAGE_NT_HEADERS32)(ntheader))->FileHeader.SizeOfOptionalHeader \
+     yr_le16toh(((PIMAGE_NT_HEADERS32)(ntheader))->FileHeader.SizeOfOptionalHeader) \
     ))
 
 // Subsystem Values
@@ -534,6 +485,7 @@ typedef struct _RICH_SIGNATURE {
 
 #define RICH_DANS 0x536e6144 // "DanS"
 #define RICH_RICH 0x68636952 // "Rich"
+
 
 #pragma pack(pop)
 #endif

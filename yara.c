@@ -38,8 +38,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <windows.h>
 
-#define PRIx64 "llx"
-#define PRId64 "lld"
+#define PRIx64 "I64x"
+#define PRId64 "I64d"
 
 #endif
 
@@ -987,7 +987,7 @@ int main(
   YR_COMPILER* compiler = NULL;
   YR_RULES* rules = NULL;
 
-  int result;
+  int result, i;
 
   argc = args_parse(options, argc, argv);
 
@@ -1009,6 +1009,12 @@ int main(
     printf("\nSend bug reports and suggestions to: %s.\n", PACKAGE_BUGREPORT);
 
     return EXIT_SUCCESS;
+  }
+
+  if (threads > MAX_THREADS)
+  {
+    fprintf(stderr, "maximum number of threads is %d\n", MAX_THREADS);
+    return EXIT_FAILURE;
   }
 
   if (argc != 2)
@@ -1152,7 +1158,7 @@ int main(
     thread_args.rules = rules;
     thread_args.start_time = start_time;
 
-    for (int i = 0; i < threads; i++)
+    for (i = 0; i < threads; i++)
     {
       if (create_thread(&thread[i], scanning_thread, (void*) &thread_args))
       {
@@ -1171,7 +1177,7 @@ int main(
     file_queue_finish();
 
     // Wait for scan threads to finish
-    for (int i = 0; i < threads; i++)
+    for (i = 0; i < threads; i++)
       thread_join(&thread[i]);
 
     file_queue_destroy();
